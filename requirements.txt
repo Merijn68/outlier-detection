@@ -1,0 +1,4 @@
+fredapi
+pandas
+matplotlib
+scikit-learn

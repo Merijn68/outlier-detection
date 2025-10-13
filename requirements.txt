@@ -10,5 +10,6 @@ torchaudio>=2.2.0
 fredapi>=0.5.1
 holidays>=0.25
 nbconvert>=7.10.0
+python-dotenv>=1.1.0
 git+https://github.com/ibm-granite/granite-tsfm.git@v0.3.1
 

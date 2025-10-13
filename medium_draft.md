@@ -287,4 +287,4 @@ Looking ahead, the next step isn’t just detecting outliers but explaining them
 This vision aligns with broader trends in explainable AI and integrated market intelligence. Early adopters can gain substantial competitive advantage by moving from noise reduction to enriched insight ([SIA Partners](https://www.sia-partners.com/en/insights/publications/frtb-and-next-generation-risk-framework-data)).
 
 ---
-If this article got you thinking or you’ve got questions about putting outlier detection into practice, just drop a comment or reach out. It’s not always easy, but I’m happy to help you figure out what works best for your situation. Looking forward to hearing your thoughts and stories!
+If this article got you thinking or you’ve got questions about putting outlier detection into practice, just drop a comment or reach out to me. It’s not always easy, but I’m happy to help you figure out what works best for your situation. Looking forward to hearing your thoughts and stories!

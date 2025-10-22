@@ -42,202 +42,21 @@ Our research focused on practical approaches applied to daily Fed H.15 market da
 We explored:
 
 - Statistical Thresholds and Z-Score Analysis:
-Simple statistical methods that look at the overall distribution in the data.
-
-```Python
-def z_score_method(series, threshold=3):
-z = (series - series.mean()) / series.std()
-return (np.abs(z) > threshold).astype(int)
-
-def iqr_method(series, factor=1.5):
-q1, q3 = series.quantile([0.25, 0.75])
-iqr = q3 - q1
-lower, upper = q1 - factor * iqr, q3 + factor * iqr
-return ((series < lower) | (series > upper)).astype(int)
-
-def modified_z_score(series, threshold=3.5):
-median = series.median()
-mad = np.median(np.abs(series - median))
-mz = 0.6745 * (series - median) / mad
-return (np.abs(mz) > threshold).astype(int)
-
-def rule_based(series, change_threshold=0.1):
-pct_change = series.pct_change().fillna(0)
-return (np.abs(pct_change) > change_threshold).astype(int)
-
-df['z_score_preds'] = z_score_method(df['10Y'])
-df['iqr_preds'] = iqr_method(df['10Y'])
-df['modified_z_score_preds'] = modified_z_score(df['10Y'])
-df['rule_based_preds'] = rule_based(df['10Y'])
-```
+Simple statistical methods that look at the overall distribution in the data. Z-score, IRQ, Modified Z-score and a simple rule-based approach, checking for any absolute daily change larger than a specified threshold.
 
 - LOF Local Outlier Factor (LOF) on Sliding Windows
 
 The research highlighted that how you segment data into windows drastically affects detection quality. Narrow windows detect short-term spikes but increase false positives, whereas wide windows smooth noise but risk missing meaningful signals.
 
-```Python
-from sklearn.neighbors import LocalOutlierFactor
-import numpy as np
-
-window_size = 10
-n_neighbors = 16
-
-Xw = np.array([df['10Y'][i:i+window_size] for i in range(len(df['10Y']) - window_size + 1)])
-
-def estimate_alpha_from_windows(Xw, c=4.0, min_alpha=1e-4, max_alpha=0.03):
-med = np.median(Xw, axis=1, keepdims=True)
-mad = np.median(np.abs(Xw - med), axis=1, keepdims=True) + 1e-8
-dev = np.max(np.abs(Xw - med) / mad, axis=1)
-flags = (dev > c).astype(int)
-alpha_est = np.clip(flags.mean(), min_alpha, max_alpha)
-return float(alpha_est), flags
-
-alpha, robust_flags = estimate_alpha_from_windows(Xw, c=4.0)
-lof = LocalOutlierFactor(n_neighbors=n_neighbors, contamination=alpha)
-win_pred = (lof.fit_predict(Xw) == -1).astype(int)
-
-candidate_points = []
-for i, flag in enumerate(win_pred):
-if flag == 1:
-window = Xw[i]
-rel = np.abs(window - np.median(window))
-idx_in_window = int(np.argmax(rel))
-candidate_points.append(i + idx_in_window)
-
-point_preds = np.zeros(len(df['10Y']), dtype=int)
-for gidx in candidate_points:
-point_preds[gidx] = 1
-
-df['lof_windowed_preds'] = point_preds
-```
-
 - LSTM Autoencoder 
 
 The LSTM (Long Short-Term Memory) autoencoder is a deep learning model specially designed for time series data that learns to reconstruct normal patterns and detects anomalies through reconstruction errors. It uses a sequence-to-sequence architecture where the encoder compresses input sequences into a compact representation, and the decoder attempts to reconstruct the original sequences. When presented with anomalous data, the reconstruction error spikes significantly, flagging outliers that differ from learned normal behavior. This makes LSTM autoencoders well-suited for detecting subtle, complex anomalies in temporal financial data, adapting to patterns and seasonalities that simpler methods might miss. Note that in our research the LSTM autoencoder did not significantly improve performance on the LOF windowed approach.
   
-```Python
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
-
-window_size = 10
-series = df['10Y'].values.astype(np.float32)
-Xw = np.array([series[i:i+window_size] for i in range(len(series) - window_size + 1)])
-
-alpha, robust_flags = estimate_alpha_from_windows(Xw, c=4.0)
-
-global_mean = np.mean(Xw)
-global_std = np.std(Xw)
-Xw_normalized = (Xw - global_mean) / (global_std + 1e-8)
-
-class SimpleLSTMAE(nn.Module):
-def init(self, input_size=1, hidden_size=16, num_layers=1):
-super().init()
-self.hidden_size = hidden_size
-self.num_layers = num_layers
-self.encoder = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-self.decoder = nn.Linear(hidden_size, input_size)
-
-def forward(self, x):
-    _, (hidden, _) = self.encoder(x)
-    last_hidden = hidden[-1]
-    output = self.decoder(last_hidden)
-    output = output.unsqueeze(1).repeat(1, x.size(1), 1)
-    return output
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = SimpleLSTMAE(input_size=1, hidden_size=16, num_layers=1).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-criterion = nn.MSELoss()
-
-Xw_tensor = torch.from_numpy(Xw_normalized).unsqueeze(-1).float().to(device)
-dataset = TensorDataset(Xw_tensor)
-dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
-model.train()
-epochs = 20
-
-for epoch in range(epochs):
-total_loss = 0
-for batch in dataloader:
-x = batch
-optimizer.zero_grad()
-reconstructed = model(x)
-loss = criterion(reconstructed, x)
-loss.backward()
-optimizer.step()
-total_loss += loss.item()
-if (epoch + 1) % 5 == 0:
-avg_loss = total_loss / len(dataloader)
-print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.6f}")
-
-model.eval()
-with torch.no_grad():
-reconstructed = model(Xw_tensor)
-reconstruction_errors = ((Xw_tensor - reconstructed) ** 2).view(Xw_tensor.size(0), -1).max(dim=1).cpu().numpy()
-
-threshold = np.quantile(reconstruction_errors, 1 - alpha)
-win_pred = (reconstruction_errors > threshold).astype(int)
-
-candidate_points = []
-for i, flag in enumerate(win_pred):
-if flag == 1:
-window = Xw[i]
-rel = np.abs(window - np.median(window))
-idx_in_window = int(np.argmax(rel))
-candidate_points.append(i + idx_in_window)
-
-point_preds = np.zeros(len(df['10Y']), dtype=int)
-for gidx in candidate_points:
-point_preds[gidx] = 1
-
-df['lstm_windowed_preds'] = point_preds
-```
 
 ### IBM TSPulse Model Anomaly Detection
 
-This deep learning foundation model enables advanced time series anomaly detection with a simple interface. The model assigns anomaly scores that can be thresholded for binary anomaly classification. The TSPulse method scored considerably worse - as the method was not able to pinpoint the anomalies on the exact date of the occurance. Causing false positives surrounding the actual anomalies. Probably the method can be tweaked - by including manual windowing again.
+This deep learning foundation model enables advanced time series anomaly detection with a simple interface. The model assigns anomaly scores that can be thresholded for binary anomaly classification. The TSPulse method scored considerably worse, as the method was not able to pinpoint the anomalies on the exact date of the occurrence. Causing false positives surrounding the actual anomalies. Probably the method can be tweaked, by including manual windowing again.
 
-```Python
-from tsfm_public.models.tspulse import TSPulseForReconstruction
-from tsfm_public.toolkit.time_series_anomaly_detection_pipeline import TimeSeriesAnomalyDetectionPipeline
-from tsfm_public.toolkit.ad_helpers import AnomalyScoreMethods
-
-model = TSPulseForReconstruction.from_pretrained(
-"ibm-granite/granite-timeseries-tspulse-r1",
-num_input_channels=1,
-revision="main",
-mask_type="user",
-)
-
-df_reset = df.reset_index().rename(columns={'index': 'date', '10Y': 'yield_10y'})
-df_reset['date'] = pd.to_datetime(df_reset['date'])
-
-pipeline = TimeSeriesAnomalyDetectionPipeline(
-model=model,
-timestamp_column="date",
-target_columns=["yield_10y"],
-prediction_mode=[AnomalyScoreMethods.PREDICTIVE.value],
-aggregation_length=4,
-aggr_function='max',
-smoothing_length=3,
-predictive_score_smoothing=False,
-device='cuda' if torch.cuda.is_available() else 'cpu'
-)
-
-result = pipeline(df_reset, batch_size=32)
-
-mean_score = result['anomaly_score'].mean()
-std_score = result['anomaly_score'].std()
-threshold = 0.1 # Or use mean_score + 3*std_score
-
-result['tspuls_preds'] = (result['anomaly_score'] > threshold).astype(int)
-result['date'] = pd.to_datetime(result['date'])
-result_indexed = result.set_index('date')
-
-if 'tspuls_preds' in df.columns:
-df = df.drop(columns=['tspuls_preds'])
-
-df = df.join(result_indexed[['tspuls_preds']], how='left')
-```
 
 ### Evaluation Summary
 
@@ -251,9 +70,7 @@ df = df.join(result_indexed[['tspuls_preds']], how='left')
 | LSTM Windowed         | 18 | 0  | 2  | 1.00      | 0.90   | 0.95     |
 | TSPulse               | 12 | 12 | 8  | 0.50      | 0.60   | 0.55     |
 
-Statistical methods alone achieve limited coverage and/or precision, but windowed methods like LOF and LSTM Autoencoders achieve near perfect detection on injected spike anomalies. LOF excels at identifying spike anomalies by detecting points with substantially lower local density compared to their neighbors, capturing rare sharp deviations in volatile market data. LSTM autoencoders, on the other hand, can model temporal dependencies and reconstruct normal sequence patterns, resulting in high sensitivity to sudden temporary market changes.
-
- More complicated methods do not always lead to better results.
+Statistical methods like Z-scores or IQR can find some anomalies but often miss many or produce false alarms. Methods that look at small windows of data, like Local Outlier Factor (LOF) and LSTM Autoencoders, do much better at spotting sudden spikes. LOF works by identifying points that stand out because they are far less similar to their nearby neighbours, which helps catch sharp, rare jumps in market data. LSTM Autoencoders, on the other hand, learn usual patterns over time and detect anomalies as unexpected changes from these patterns. Importantly, more complex methods don't always mean better results - sometimes focusing on the right approach for your specific data matters most.
 
 ## 6. Implementation Strategy: Making It Work in Practice
 Transitioning from prototype to production is where many projects falter. To make outlier detection effective:

@@ -6,6 +6,18 @@ Financial institutions rely heavily on massive streams of market data to calcula
 
 This article shares practical insights from research using Fed H.15 market data, emphasizing that how you implement detection—particularly through windowing strategies—matters more than which specific algorithm you use. Business leaders will gain a realistic roadmap for adopting effective anomaly detection to improve data reliability and meet rising regulatory expectations. The full Python notebooks and code base used for this research are available on [GitHub](https://github.com/Merijn68/outlier-detection).
 
+What should you do differently after reading this:
+- Don’t rely on fixed thresholds — they break in volatile markets.
+- Try multiple detection approaches, not just one.
+- Use sliding windows where appropriate to give context to your anomaly detection (even with simple methods this can yield good results).
+- Evaluate the different methods against labeled anomalies before using them in production.
+- Involve analysts early to validate and tune thresholds.
+
+Who This Is For:
+- Financial risk managers and analysts seeking practical data quality tools
+- Data teams supporting FRTB and CRR3 compliance
+- Business leaders who want a scalable, low-maintenance detection approach
+
 ## 2. Why It Matters
 #### Business Perspective
 Financial markets generate enormous volumes of data every day, covering bond prices, currency rates, and more. The complexity arising from diverse data sources, brokers, and methodologies makes manual detection of inconsistencies nearly impossible. Automated anomaly detection is essential to ensure this data is reliable and trustworthy.
@@ -48,27 +60,37 @@ Simple statistical methods that look at the overall distribution in the data. Z-
 
 The research highlighted that how you segment data into windows drastically affects detection quality. Narrow windows detect short-term spikes but increase false positives, whereas wide windows smooth noise but risk missing meaningful signals.
 
+- GARCH (Generalized Autoregressive Conditional Heteroskedasticity)
+A statistical model used to estimate time-varying volatility in financial time series. Unlike simpler methods that assume constant variance, GARCH captures the tendency of financial markets to experience clustered periods of high and low volatility.
+
 - LSTM Autoencoder 
 
 The LSTM (Long Short-Term Memory) autoencoder is a deep learning model specially designed for time series data that learns to reconstruct normal patterns and detects anomalies through reconstruction errors. It uses a sequence-to-sequence architecture where the encoder compresses input sequences into a compact representation, and the decoder attempts to reconstruct the original sequences. When presented with anomalous data, the reconstruction error spikes significantly, flagging outliers that differ from learned normal behavior. This makes LSTM autoencoders well-suited for detecting subtle, complex anomalies in temporal financial data, adapting to patterns and seasonalities that simpler methods might miss. Note that in our research the LSTM autoencoder did not significantly improve performance on the LOF windowed approach.
   
-
-### IBM TSPulse Model Anomaly Detection
+- IBM TSPulse Model Anomaly Detection
 
 This deep learning foundation model enables advanced time series anomaly detection with a simple interface. The model assigns anomaly scores that can be thresholded for binary anomaly classification. The TSPulse method scored considerably worse, as the method was not able to pinpoint the anomalies on the exact date of the occurrence. Causing false positives surrounding the actual anomalies. Probably the method can be tweaked, by including manual windowing again.
+
+LOF performed exceptionally well in our test case, but it does not model financial dynamics like autocorrelation or volatility clustering. In more volatile or non-stationary markets, this could lead to false positives or missed anomalies. Time-series-aware models like GARCH or using residuals from ARIMA can offer more robust performance by adapting thresholds based on expected volatility. For many institutions, however, such models can be complex to implement. That’s why simple approaches with thoughtful windowing can still be effective — as long as they're tested thoroughly.
 
 
 ### Evaluation Summary
 
+This table compares detection accuracy across 20 inserted (known) anomalies. Anomalies were defined by manually inserting 20 point anomalies. Large anomalies, that would represent data error - and small anomalies - to mimic the behaviour often observed when data vendors are not sourcing a data point due to for instance local holidays. 
+
 | Method               | TP | FP | FN | Precision | Recall | F1 Score |
 |----------------------|----|----|----|-----------|--------|----------|
 | Z Score               | 4  | 0  | 16 | 1.00      | 0.20   | 0.33     |
-| IQR                   | 1  | 0  | 19 | 1.00      | 0.05   | 0.10     |
+| IQR                   | 3  | 0  | 17 | 1.00      | 0.15   | 0.26     |
 | Modified Z Score      | 0  | 0  | 20 | 0.00      | 0.00   | 0.00     |
-| Rule Based            | 20 | 49 | 0  | 0.29      | 1.00   | 0.45     |
-| LOF Windowed          | 20 | 0  | 0  | 1.00      | 1.00   | 1.00     |
-| LSTM Windowed         | 18 | 0  | 2  | 1.00      | 0.90   | 0.95     |
-| TSPulse               | 12 | 12 | 8  | 0.50      | 0.60   | 0.55     |
+| Rule Based            | 19 | 48 | 1  | 0.28      | 0.95   | 0.44     |
+| LOF Windowed          | 19 | 0  | 1  | 1.00      | 0.95   | 0.97     |
+| GARCH                 | 19 | 12 | 1  | 0.61      | 0.95   | 0.75     |
+| LSTM Windowed         | 19 | 0  | 1  | 1.00      | 0.95   | 0.97     |
+| TSPulse               | 17 | 19 | 3  | 0.47      | 0.85   | 0.61     |
+
+TP = True Positives, FP = False Positives, FN = False Negatives.
+An anomaly was counted correct if it matched the actual day.
 
 Statistical methods like Z-scores or IQR can find some anomalies but often miss many or produce false alarms. Methods that look at small windows of data, like Local Outlier Factor (LOF) and LSTM Autoencoders, do much better at spotting sudden spikes. LOF works by identifying points that stand out because they are far less similar to their nearby neighbours, which helps catch sharp, rare jumps in market data. LSTM Autoencoders, on the other hand, learn usual patterns over time and detect anomalies as unexpected changes from these patterns. Importantly, more complex methods don't always mean better results - sometimes focusing on the right approach for your specific data matters most.
 

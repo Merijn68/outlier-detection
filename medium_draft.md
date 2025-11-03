@@ -49,18 +49,22 @@ Historically, risk teams relied on manual checks or fixed thresholds to flag sus
 Modern markets require adaptive, scalable detection methods that reduce noise while preserving important signals. This establishes the motivation for more sophisticated approaches grounded in data science and machine learning ([Anodot](https://www.anodot.com/blog/outlier-detection-dramatically-impacts-business/)).
 
 ## 5. Method Comparison: What Actually Works
-Our research focused on practical approaches applied to daily Fed H.15 market data, balancing simplicity and effectiveness. The full code and data are openly available on [GitHub](https://github.com/Merijn68/outlier-detection). 
+
+Our research focused on practical approaches to outlier detection which we applied to daily Fed H.15 market data. The full code and data are openly available on [GitHub](https://github.com/Merijn68/outlier-detection). 
+We inserted 20 point anomalies and scored each method on how acurate it could find these anomalies in the data. 
 
 We explored:
 
 - Statistical Thresholds and Z-Score Analysis:
-Simple statistical methods that look at the overall distribution in the data. Z-score, IRQ, Modified Z-score and a simple rule-based approach, checking for any absolute daily change larger than a specified threshold.
+  
+Simple statistical methods that look at the overall distribution in the data. Z-score, IQR, Modified Z-score and a simple rule-based approach, checking for any absolute daily change larger than a specified threshold.
 
 - LOF Local Outlier Factor (LOF) on Sliding Windows
 
 The research highlighted that how you segment data into windows drastically affects detection quality. Narrow windows detect short-term spikes but increase false positives, whereas wide windows smooth noise but risk missing meaningful signals.
 
 - GARCH (Generalized Autoregressive Conditional Heteroskedasticity)
+  
 A statistical model used to estimate time-varying volatility in financial time series. Unlike simpler methods that assume constant variance, GARCH captures the tendency of financial markets to experience clustered periods of high and low volatility.
 
 - LSTM Autoencoder 
@@ -69,7 +73,7 @@ The LSTM (Long Short-Term Memory) autoencoder is a deep learning model specially
   
 - IBM TSPulse Model Anomaly Detection
 
-This deep learning foundation model enables advanced time series anomaly detection with a simple interface. The model assigns anomaly scores that can be thresholded for binary anomaly classification. The TSPulse method scored considerably worse, as the method was not able to pinpoint the anomalies on the exact date of the occurrence. Causing false positives surrounding the actual anomalies. Probably the method can be tweaked, by including manual windowing again.
+This deep learning foundation model enables advanced time series anomaly detection with a simple interface. The model assigns anomaly scores that can be thresholded for binary anomaly classification. The TSPulse method scored worse because it couldn’t pinpoint anomalies on the exact dates, causing false positives around the actual anomalies. Probably the method can be tweaked, by including manual windowing again.
 
 LOF performed exceptionally well in our test case, but it does not model financial dynamics like autocorrelation or volatility clustering. In more volatile or non-stationary markets, this could lead to false positives or missed anomalies. Time-series-aware models like GARCH or using residuals from ARIMA can offer more robust performance by adapting thresholds based on expected volatility. For many institutions, however, such models can be complex to implement. That’s why simple approaches with thoughtful windowing can still be effective — as long as they're tested thoroughly.
 

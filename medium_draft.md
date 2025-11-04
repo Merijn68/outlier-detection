@@ -1,4 +1,5 @@
 # From Noise to Signal: A Manager's Guide to Practical Outlier Detection in Financial Markets
+## How financial institutions can use anomaly detection techniques to improve market data quality and reduce risk
 
 ## 1. Executive Summary
 
